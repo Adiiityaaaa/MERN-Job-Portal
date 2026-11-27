@@ -1,0 +1,54 @@
+import jwt from "jsonwebtoken";
+import { User } from "../models/user.model.js";
+
+const authenticateToken = async (req, res, next) => {
+  try {
+    const bearerHeader = req.headers.authorization;
+    const bearerToken = bearerHeader?.startsWith("Bearer ")
+      ? bearerHeader.slice(7)
+      : null;
+
+    const token = req.cookies?.token || bearerToken;
+
+    if (!token) {
+      return res.status(401).json({
+        message: "Authentication token required",
+        success: false,
+      });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (!decoded || !decoded.userId) {
+      return res.status(401).json({
+        message: "Invalid token payload",
+        success: false,
+      });
+    }
+
+    const user = await User.findById(decoded.userId).select("-password");
+    if (!user) {
+      return res.status(401).json({
+        message: "User account not found",
+        success: false,
+      });
+    }
+
+    if (user.isSuspended) {
+      return res.status(403).json({
+        message: "Your account has been suspended. Please contact support.",
+        success: false,
+      });
+    }
+
+    req.id = user._id.toString();
+    req.user = user;
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      message: "Invalid or expired token",
+      success: false,
+    });
+  }
+};
+
+export default authenticateToken;
